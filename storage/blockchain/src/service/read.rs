@@ -290,11 +290,10 @@ fn block_complete_entries_above_split_point(
                 return None;
             }
 
-            let block =
-                match get_block_complete_entry_from_height(height, pruned, &tapes, &tx_ro, db) {
-                    Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
-                };
+            let block = match get_block_complete_entry_from_height(height, pruned, &tapes, db) {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
 
             tx_count += block.txs.len() + 1;
 
@@ -379,11 +378,11 @@ fn block_complete_entries_by_height(
     db: &BlockchainDatabase,
     block_heights: Vec<BlockHeight>,
 ) -> ResponseResult {
-    let (tx_ro, tapes) = db.read_transactions()?;
+    let tapes = db.linear_tapes.reader();
 
     let blocks = block_heights
         .into_par_iter()
-        .map(|height| get_block_complete_entry_from_height(height, false, &tapes, &tx_ro, db))
+        .map(|height| get_block_complete_entry_from_height(height, false, &tapes, db))
         .collect::<DbResult<_>>()?;
 
     Ok(BlockchainResponse::BlockCompleteEntriesByHeight(blocks))
@@ -911,9 +910,7 @@ fn txs_in_block(
 
         let txs = missing_txs
             .into_iter()
-            .map(|index_offset| {
-                get_tx_blob_from_id(&(first_tx_index + index_offset), &tapes, &tx_ro, db)
-            })
+            .map(|index_offset| get_tx_blob_from_id(&(first_tx_index + index_offset), &tapes, db))
             .collect::<DbResult<_>>()?;
 
         (block, txs)
@@ -1311,7 +1308,7 @@ fn transactions(db: &BlockchainDatabase, tx_hashes: Vec<[u8; 32]>) -> ResponseRe
         let is_miner_tx = tx_id == block_info.mining_tx_index;
 
         let (pruned_blob, prunable_blob, prunable_hash) =
-            get_split_tx_blobs(tx_id, &tx_info, is_miner_tx, &tapes, &tx_ro, db)?;
+            get_split_tx_blobs(tx_id, &tx_info, is_miner_tx, &tapes, db)?;
 
         let block_timestamp = if let Some(timestamp) = block_timestamps.get(&tx_info.height) {
             *timestamp

@@ -1,6 +1,7 @@
 //! Database writer thread definitions and logic.
 
 use std::{
+    borrow::Cow,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -154,7 +155,7 @@ fn write_blocks(db: &BlockchainDatabase, blocks: &[VerifiedBlockInformation]) ->
 
     let mut tapes = db.linear_tapes.append();
 
-    let numb_transactions = tapes
+    let mut numb_transactions = tapes
         .fixed_sized_tape_len(&db.tx_infos)
         .expect("required tape not open");
 
@@ -164,16 +165,18 @@ fn write_blocks(db: &BlockchainDatabase, blocks: &[VerifiedBlockInformation]) ->
 
     let mut pre_rct_numb_outputs_cache = db.pre_rct_numb_outputs_cache.lock().unwrap();
     let mut tx_rw = db.fjall.batch().durability(Some(fjall_persist_mode));
-    let tapes = db.linear_tapes.reader();
 
-    crate::ops::block::add_blocks_to_dynamic_tables(
-        db,
-        blocks,
-        numb_transactions,
-        &mut tx_rw,
-        &mut pre_rct_numb_outputs_cache,
-        &tapes,
-    )?;
+    for block in blocks {
+        crate::ops::block::add_block_to_dynamic_tables(
+            db,
+            &block.block,
+            &block.block_hash,
+            block.txs.iter().map(|tx| Cow::Borrowed(&tx.tx)),
+            &mut numb_transactions,
+            &mut tx_rw,
+            &mut pre_rct_numb_outputs_cache,
+        )?;
+    }
 
     tx_rw.commit()?;
 
@@ -196,7 +199,6 @@ fn write_alt_block(db: &BlockchainDatabase, block: &AltBlockInformation) -> Resp
 fn pop_blocks(db: &BlockchainDatabase, numb_blocks: usize, keep_blocks: bool) -> ResponseResult {
     let mut tapes = db.linear_tapes.truncate();
     let mut tx_rw = db.fjall.batch().durability(Some(PersistMode::SyncAll));
-    let tx_ro = db.fjall.snapshot();
 
     // flush all the current alt blocks as they may reference blocks to be popped.
     crate::ops::alt_block::flush_alt_blocks(db)?;
@@ -213,7 +215,7 @@ fn pop_blocks(db: &BlockchainDatabase, numb_blocks: usize, keep_blocks: bool) ->
     // pop the blocks
     for _ in 0..numb_blocks {
         let (_, _, _, added_to_alt_chain) =
-            crate::ops::block::pop_block(db, old_main_chain_id, &mut tx_rw, &tx_ro, &mut tapes)?;
+            crate::ops::block::pop_block(db, old_main_chain_id, &mut tx_rw, &mut tapes)?;
 
         if old_main_chain_id.is_some() && !added_to_alt_chain {
             old_main_chain_id = None;

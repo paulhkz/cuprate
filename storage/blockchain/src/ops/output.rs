@@ -143,7 +143,6 @@ pub fn output_to_output_on_chain(
     amount: Amount,
     get_txid: bool,
     tapes: &tapes::TapesReadTransaction,
-    tx_ro: &fjall::Snapshot,
     db: &BlockchainDatabase,
 ) -> DbResult<OutputOnChain> {
     let commitment = compute_zero_commitment(amount);
@@ -157,7 +156,6 @@ pub fn output_to_output_on_chain(
         let txid = get_tx_hash_from_id(
             &output.tx_idx,
             tapes,
-            tx_ro,
             block_info.mining_tx_index == output.tx_idx,
             db,
         )?;
@@ -182,7 +180,6 @@ pub fn rct_output_to_output_on_chain(
     rct_output: &RctOutput,
     get_txid: bool,
     tapes: &tapes::TapesReadTransaction,
-    tx_ro: &fjall::Snapshot,
     db: &BlockchainDatabase,
 ) -> DbResult<OutputOnChain> {
     // INVARIANT: Commitments stored are valid when stored by the database.
@@ -197,7 +194,6 @@ pub fn rct_output_to_output_on_chain(
         let txid = get_tx_hash_from_id(
             &rct_output.tx_idx,
             tapes,
-            tx_ro,
             block_info.mining_tx_index == rct_output.tx_idx,
             db,
         )?;
@@ -231,15 +227,13 @@ pub fn id_to_output_on_chain(
         let rct_output = tapes
             .read_entry(&db.rct_outputs, id.amount_index)?
             .ok_or(BlockchainError::NotFound)?;
-        let output_on_chain =
-            rct_output_to_output_on_chain(&rct_output, get_txid, tapes, tx_ro, db)?;
+        let output_on_chain = rct_output_to_output_on_chain(&rct_output, get_txid, tapes, db)?;
 
         Ok(output_on_chain)
     } else {
         // v1 transactions.
         let output = get_output(db, id, tx_ro)?;
-        let output_on_chain =
-            output_to_output_on_chain(&output, id.amount, get_txid, tapes, tx_ro, db)?;
+        let output_on_chain = output_to_output_on_chain(&output, id.amount, get_txid, tapes, db)?;
 
         Ok(output_on_chain)
     }
