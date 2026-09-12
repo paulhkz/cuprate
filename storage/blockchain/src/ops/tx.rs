@@ -104,7 +104,6 @@ pub fn add_tx_info_to_tapes(
 }
 
 /// Adds the tx info and related data to the dynamic tables.
-#[expect(clippy::too_many_arguments)]
 pub fn add_tx_info_to_dynamic_tables(
     db: &BlockchainDatabase,
     tx: &Transaction<Pruned>,
@@ -447,33 +446,26 @@ pub fn read_prunable_tape(
     )
     .unwrap();
 
-    match &db.prunable_tables {
-        PrunableTables::Full(prunable) => {
-            tapes.read_bytes(
-                &prunable[stripe as usize - 1],
-                tx_info.prunable_blob_idx,
-                buf,
-            )?;
-        }
-        PrunableTables::Pruned {
-            stripe: our_stripe,
-            kept_stripe,
-            ..
-        } if *our_stripe == stripe => {
-            tapes.read_bytes(kept_stripe, tx_info.prunable_blob_idx, buf)?;
-        }
-        PrunableTables::Pruned {
+    if let Some(prunable_table) = db.prunable_tables.try_get_prunable_tape(stripe) {
+        // We have the tx unpruned.
+        tapes.read_bytes(prunable_table, tx_info.prunable_blob_idx, buf)?;
+    } else {
+        // We have the tx pruned - check the tip blocks.
+        let PrunableTables::Pruned {
             prunable_tip_blobs,
             prunable_tip,
             ..
-        } => {
-            let prunable_blob_idx = tapes.read_entry(&prunable_tip, *tx_id)?;
+        } = &db.prunable_tables
+        else {
+            unreachable!()
+        };
 
-            if let Some(prunable_blob_idx) = prunable_blob_idx {
-                tapes.read_bytes(prunable_tip_blobs, prunable_blob_idx, buf)?;
-            } else {
-                return Err(BlockchainError::NotFound);
-            }
+        let prunable_blob_idx = tapes.read_entry(prunable_tip, *tx_id)?;
+
+        if let Some(prunable_blob_idx) = prunable_blob_idx {
+            tapes.read_bytes(prunable_tip_blobs, prunable_blob_idx, buf)?;
+        } else {
+            return Err(BlockchainError::NotFound);
         }
     }
 

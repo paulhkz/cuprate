@@ -209,7 +209,7 @@ pub(crate) enum PrunableTables {
         ///
         /// # Warning
         ///
-        /// Only transactions in pruned blocks (block_stripe != stripe) will have a valid value
+        /// Only transactions in pruned blocks (`block_stripe` != `stripe`) will have a valid value
         /// in this table. Other txs will be here but their value is unspecified.
         ///
         /// | index | value                                   |
@@ -277,7 +277,7 @@ impl PrunableTables {
 
             // Open the tip tapes. We can use `start_index: 0` here as the tapes database will
             // only take that value into account when creating a new tape. Here we are always opening
-            // an already exsiting tape.
+            // an already existing tape.
             let prunable_tip_blobs = tape_append_tx.open_blob_tape(
                 "prunable_tip_blobs",
                 CachedTapeOpenOptions {
@@ -303,7 +303,9 @@ impl PrunableTables {
             )?;
 
             Ok(Self::Pruned {
-                stripe: stripe.try_into().unwrap(),
+                stripe: stripe
+                    .try_into()
+                    .expect("Pruning stripe is in range as we just created it"),
                 kept_stripe,
                 prunable_tip,
                 prunable_tip_blobs,
